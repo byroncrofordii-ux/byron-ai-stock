@@ -282,25 +282,27 @@ def download_stock_data(ticker: str, period: str) -> pd.DataFrame:
     Download stock history from Yahoo Finance.
     Cache lasts 15 minutes.
     """
-    data = yf.download(
-        ticker,
-        period=period,
-        interval="1d",
-        auto_adjust=True,
-        progress=False,
-    )
+    try:
+        stock = yf.Ticker(ticker)
 
-    if data.empty:
-        return pd.DataFrame()
+        data = stock.history(
+            period=period,
+            interval="1d",
+            auto_adjust=True,
+        )
 
-    # Newer yfinance versions may return MultiIndex columns.
-    if isinstance(data.columns, pd.MultiIndex):
-        data.columns = data.columns.get_level_values(0)
+        if data.empty:
+            return pd.DataFrame()
 
-    data = data.copy()
-    data.dropna(subset=["Close"], inplace=True)
+        data = data.copy()
+        data.dropna(subset=["Close"], inplace=True)
 
-    return data
+        return data
+
+    except Exception as error:
+        raise RuntimeError(
+            f"Yahoo Finance error for {ticker}: {error}"
+        ) from error
 
 
 def calculate_rsi(close_prices: pd.Series, period: int = 14) -> pd.Series:
