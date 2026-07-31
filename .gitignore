@@ -1,0 +1,5 @@
+users.json
+watchlist.json
+watchlists/
+__pyccahe__/
+*.pyc
