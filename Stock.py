@@ -6,6 +6,15 @@ import json
 import os
 import hashlib
 
+import sys
+from pathlib import Path
+
+PROJECT_FOLDER = Path(__file__).resolve().parent
+
+if str(PROJECT_FOLDER) not in sys.path:
+    sys.path.insert(0, str(PROJECT_FOLDER))
+
+from modules.scoring import calculate_stock_score
 
 USERS_FILE = "users.json"
 WATCHLIST_FOLDER = "watchlists"
@@ -356,71 +365,23 @@ def create_analysis(data: pd.DataFrame) -> dict:
     # -----------------------------------------------------
     # SIGNAL SCORE
     # -----------------------------------------------------
-    score = 50
-    reasons = []
-
-    if current_price > average_20:
-        score += 12
-        reasons.append("the price is above its recent average")
-    else:
-        score -= 12
-        reasons.append("the price is below its recent average")
-
-    if average_20 > average_50:
-        score += 18
-        reasons.append("the short-term trend is stronger than the longer trend")
-    else:
-        score -= 18
-        reasons.append("the short-term trend is weaker than the longer trend")
-
-    if 50 <= rsi <= 70:
-        score += 10
-    elif rsi > 75:
-        score -= 8
-        reasons.append("the stock may have risen too quickly")
-    elif rsi < 35:
-        score -= 5
-        reasons.append("selling pressure has recently been high")
-
     recent_return = df["Close"].pct_change(5).iloc[-1]
 
-    if pd.notna(recent_return):
-        if recent_return > 0.03:
-            score += 10
-            reasons.append("momentum has been positive this week")
-        elif recent_return < -0.03:
-            score -= 10
-            reasons.append("momentum has been negative this week")
+    score_results = calculate_stock_score(
+        current_price=current_price,
+        average_20=average_20,
+        average_50=average_50,
+        rsi=rsi,
+        recent_return=recent_return,
+    )
 
-    score = int(max(0, min(100, round(score))))
-
-    # -----------------------------------------------------
-    # FRIENDLY SIGNAL
-    # -----------------------------------------------------
-    if score >= 68:
-        signal = "GO FOR IT"
-        emoji = "🟢"
-        card_class = "buy-card"
-        action_message = (
-            "This stock currently has positive price momentum. "
-            "It may be worth watching for a possible opportunity."
-        )
-    elif score >= 43:
-        signal = "WATCH"
-        emoji = "🟡"
-        card_class = "watch-card"
-        action_message = (
-            "The signals are mixed right now. Waiting for a clearer trend "
-            "may be the safer move."
-        )
-    else:
-        signal = "BE CAREFUL"
-        emoji = "🔴"
-        card_class = "avoid-card"
-        action_message = (
-            "The stock is currently showing weakness. It may be better to "
-            "wait before making a move."
-        )
+    score = score_results["score"]
+    signal = score_results["signal"]
+    emoji = score_results["emoji"]
+    card_class = score_results["card_class"]
+    action_message = score_results["action_message"]
+    confidence = score_results["confidence"]
+    plain_reason = score_results["reason"]
 
     # -----------------------------------------------------
     # RISK LEVEL
@@ -435,19 +396,6 @@ def create_analysis(data: pd.DataFrame) -> dict:
         risk = "High"
         risk_emoji = "🔴"
 
-    # Confidence measures how far the score is from neutral.
-    confidence = int(min(95, 55 + abs(score - 50)))
-
-    plain_reason = (
-        f"BYRON noticed that {reasons[0]}"
-        if reasons
-        else "BYRON found a mixed market trend"
-    )
-
-    if len(reasons) > 1:
-        plain_reason += f", and {reasons[1]}"
-
-    plain_reason += "."
 
     return {
         "data": df,
