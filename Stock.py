@@ -1316,8 +1316,12 @@ if analyze_button:
 
     price_column, change_column = st.columns(2)
 
+    
+    st.write(results)
+    st.write(type(results))
+
     price_column.metric(
-        label="Current Price",
+            label="Current Price",
         value=f"${float(results['current_price']):,.2f}",
     )
 
