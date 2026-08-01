@@ -36,6 +36,16 @@ DEFAULT_MARKET_TICKERS = [
     "KO",
 ]
 
+HOT_MARKET_TICKERS = [
+    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL",
+    "META", "TSLA", "AVGO", "NFLX", "AMD",
+    "PLTR", "INTC", "CRM", "ORCL", "ADBE",
+    "JPM", "BAC", "GS", "V", "MA",
+    "WMT", "COST", "TGT", "HD", "LOW",
+    "DIS", "NKE", "KO", "PEP", "MCD",
+    "XOM", "CVX", "CAT", "BA", "GE",
+    "UNH", "JNJ", "PFE", "ABBV", "MRK",
+]
 
 def normalize_username(username: str) -> str:
     """
@@ -313,15 +323,18 @@ st.markdown(
         }
 
         .ticker-scroll {
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
             white-space: nowrap;
-            animation: ticker-move 60s linear infinite;
+            width: max-content;
+            animation: ticker-move 45s linear infinite;
         }
 
         .ticker-item {
             display: inline-block;
-            margin-right: 36px;
-            font-size: 0.95rem;
+            margin-right: 42px;
+            font-size: 15px;
+            color: #ffffff;
         }
 
         .ticker-up {
@@ -341,11 +354,11 @@ st.markdown(
 
         @keyframes ticker-move {
             from {
-                transform: translateX(0);
+                transform: translateX(100%);
             }
 
             to {
-                transform: translateX(-50%);
+                transform: translateX(-100%);
             }
         }
 
@@ -405,6 +418,128 @@ def get_marquee_data(tickers: tuple[str, ...]) -> list[dict]:
 
     return marquee_items
 
+@st.cache_data(ttl=300)
+def get_hot_stocks(
+    tickers: tuple[str, ...],
+    limit: int = 10,
+) -> list[dict]:
+    """
+    Rank stocks by their most recent daily percentage gain.
+    """
+
+    hot_stocks = []
+
+    for ticker in tickers:
+        try:
+            stock = yf.Ticker(ticker)
+
+            history = stock.history(
+                period="5d",
+                interval="1d",
+                auto_adjust=True,
+            )
+
+            if history.empty or len(history) < 2:
+                continue
+
+            current_price = float(history["Close"].iloc[-1])
+            previous_close = float(history["Close"].iloc[-2])
+
+            if previous_close == 0:
+                continue
+
+            percentage_change = (
+                (current_price - previous_close)
+                / previous_close
+            ) * 100
+
+            hot_stocks.append(
+                {
+                    "ticker": ticker,
+                    "price": current_price,
+                    "previous_close": previous_close,
+                    "change": percentage_change,
+                }
+            )
+
+        except Exception:
+            continue
+
+    # Highest daily percentage gain appears first
+    hot_stocks.sort(
+        key=lambda item: item["change"],
+        reverse=True,
+    )
+
+    return hot_stocks[:limit]
+
+@st.cache_data(ttl=300)
+
+
+@st.cache_data(ttl=300)
+def get_hidden_gems(
+    tickers: tuple[str, ...],
+    limit: int = 5,
+    maximum_price: float = 50,
+) -> list[dict]:
+    """
+    Find lower-priced stocks showing strong recent growth.
+
+    A hidden gem must:
+    - Cost no more than maximum_price
+    - Have positive growth over roughly 30 trading days
+    """
+
+    hidden_gems = []
+
+    for ticker in tickers:
+        try:
+            stock = yf.Ticker(ticker)
+
+            history = stock.history(
+                period="3mo",
+                interval="1d",
+                auto_adjust=True,
+            )
+
+            if history.empty or len(history) < 22:
+                continue
+
+            latest_price = float(history["Close"].iloc[-1])
+            price_30_days_ago = float(history["Close"].iloc[-22])
+
+            if latest_price > maximum_price or price_30_days_ago <= 0:
+                continue
+
+            growth_30d = (
+                (latest_price - price_30_days_ago)
+                / price_30_days_ago
+            ) * 100
+
+            if growth_30d <= 0:
+                continue
+
+            hidden_gems.append(
+                {
+                    "ticker": ticker,
+                    "price": latest_price,
+                    "growth_30d": growth_30d,
+                }
+            )
+
+        except Exception:
+            continue
+
+    hidden_gems.sort(
+        key=lambda item: item["growth_30d"],
+        reverse=True,
+    )
+
+    return hidden_gems[:limit]
+
+
+
+
 def display_market_marquee(
     tickers: list[str],
     title: str,
@@ -454,13 +589,23 @@ def display_market_marquee(
     <html>
     <head>
         <style>
+            html,
             body {{
                 margin: 0;
-                background: transparent;
+                padding: 0;
+                background: #0e1117;
+                color: #ffffff;
                 font-family: Arial, sans-serif;
-                color: white;
                 overflow: hidden;
             }}
+
+        .ticker-title {{
+            color: #ffffff;
+        }}
+
+        .ticker-item {{
+            color: #ffffff;
+        }}
 
             .ticker-title {{
                 font-size: 14px;
@@ -599,6 +744,7 @@ def calculate_rsi(close_prices: pd.Series, period: int = 14) -> pd.Series:
     return rsi
 
 
+
 def create_analysis(data: pd.DataFrame) -> dict:
     """
     Convert market calculations into simple friend-friendly results.
@@ -628,6 +774,71 @@ def create_analysis(data: pd.DataFrame) -> dict:
 
     daily_volatility = df["Daily_Return"].tail(30).std()
     annualized_volatility = float(daily_volatility * np.sqrt(252) * 100)
+
+def scan_green_signals(
+    tickers: tuple[str, ...],
+) -> list[dict]:
+    """
+    Scan stocks and return those with a green BYRON signal.
+    """
+
+    green_stocks = []
+
+    for ticker in tickers:
+        try:
+            stock = yf.Ticker(ticker)
+
+            history = stock.history(
+                period="6mo",
+                interval="1d",
+                auto_adjust=True,
+            )
+
+            if history.empty or len(history) < 55:
+                continue
+
+            data = history.copy()
+            data["Average_20"] = data["Close"].rolling(20).mean()
+            data["Average_50"] = data["Close"].rolling(50).mean()
+            data["RSI"] = calculate_rsi(data["Close"])
+
+            latest = data.iloc[-1]
+
+            current_price = float(latest["Close"])
+            average_20 = float(latest["Average_20"])
+            average_50 = float(latest["Average_50"])
+            rsi = float(latest["RSI"])
+            recent_return = data["Close"].pct_change(5).iloc[-1]
+
+            score_results = calculate_stock_score(
+                current_price=current_price,
+                average_20=average_20,
+                average_50=average_50,
+                rsi=rsi,
+                recent_return=recent_return,
+            )
+
+            if score_results["score"] >= 68:
+                green_stocks.append(
+                    {
+                        "ticker": ticker,
+                        "price": current_price,
+                        "score": score_results["score"],
+                        "signal": score_results["signal"],
+                        "reason": score_results["reason"],
+                    }
+                )
+
+        except Exception:
+            continue
+
+    green_stocks.sort(
+        key=lambda item: item["score"],
+        reverse=True,
+    )
+
+    return green_stocks
+
 
     # -----------------------------------------------------
     # SIGNAL SCORE
@@ -837,6 +1048,180 @@ display_market_marquee(
     marquee_title,
 )
 
+# ---------------------------------------------------------
+# MARKET DISCOVERY
+# ---------------------------------------------------------
+
+if watchlist:
+    discovery_pool = watchlist
+    discovery_source = "Your Watchlist"
+else:
+    discovery_pool = HOT_MARKET_TICKERS
+    discovery_source = "The Market"
+
+
+# ---------------------------------------------------------
+# WHAT'S HOT
+# ---------------------------------------------------------
+with st.expander(
+    f"🔥 What's Hot — {discovery_source}",
+    expanded=False,
+):
+    st.caption(
+        "Stocks showing the strongest recent price growth."
+    )
+
+    with st.spinner("B.Y.R.O.N. is checking market momentum..."):
+        hot_stocks = get_hot_stocks(
+            tuple(discovery_pool),
+            limit=5,
+        )
+
+    if not hot_stocks:
+        st.info(
+            "Market movement is not available right now."
+        )
+
+    else:
+        for position, stock in enumerate(
+            hot_stocks,
+            start=1,
+        ):
+            ticker_column, price_column, change_column = st.columns(
+                [1.2, 1.4, 1.3]
+            )
+
+            with ticker_column:
+                if st.button(
+                    f"{position}. {stock['ticker']}",
+                    key=f"hot_{stock['ticker']}",
+                    use_container_width=True,
+                ):
+                    st.session_state["selected_stock"] = stock["ticker"]
+                    st.rerun()
+
+            price_column.metric(
+                "Latest Close",
+                f"${stock['price']:,.2f}",
+            )
+
+            change_column.metric(
+                "Daily Growth",
+                f"{stock['change']:+.2f}%",
+            )
+
+
+# ---------------------------------------------------------
+# HIDDEN GEMS
+# ---------------------------------------------------------
+with st.expander(
+    f"💎 Hidden Gems — {discovery_source}",
+    expanded=False,
+):
+    st.caption(
+        "Lower-priced stocks showing strong recent growth."
+    )
+
+    with st.spinner("B.Y.R.O.N. is searching for hidden gems..."):
+        hidden_gems = get_hidden_gems(
+            tuple(discovery_pool),
+            limit=5,
+            maximum_price=50,
+        )
+
+    if not hidden_gems:
+        st.info(
+            "No hidden gems met the current requirements."
+        )
+
+    else:
+        for position, stock in enumerate(
+            hidden_gems,
+            start=1,
+        ):
+            ticker_column, price_column, growth_column = st.columns(
+                [1.2, 1.4, 1.3]
+            )
+
+            with ticker_column:
+                if st.button(
+                    f"{position}. {stock['ticker']}",
+                    key=f"gem_{stock['ticker']}",
+                    use_container_width=True,
+                ):
+                    st.session_state["selected_stock"] = stock["ticker"]
+                    st.rerun()
+
+            price_column.metric(
+                "Latest Close",
+                f"${stock['price']:,.2f}",
+            )
+
+            growth_column.metric(
+                "30-Day Growth",
+                f"{stock['growth_30d']:+.2f}%",
+            )
+
+with st.expander(
+    "🟢 Find Current Green Signals",
+    expanded=False,
+):
+    st.caption(
+        "B.Y.R.O.N. scans the market list for stocks currently "
+        "scoring 68 or higher."
+    )
+
+    if st.button(
+        "Scan for Green Signals",
+        use_container_width=True,
+    ):
+        with st.spinner(
+            "B.Y.R.O.N. is scanning the market..."
+        ):
+            green_signals = scan_green_signals(
+                tuple(HOT_MARKET_TICKERS)
+            )
+
+        if not green_signals:
+            st.info(
+                "No stocks in the current market list earned "
+                "a green signal right now."
+            )
+
+        else:
+            st.success(
+                f"B.Y.R.O.N. found {len(green_signals)} green signal(s)."
+            )
+
+            for position, stock in enumerate(
+                green_signals,
+                start=1,
+            ):
+                ticker_column, price_column, score_column = st.columns(
+                    [1.2, 1.3, 1.2]
+                )
+
+                with ticker_column:
+                    if st.button(
+                        f"{position}. {stock['ticker']}",
+                        key=f"green_signal_{stock['ticker']}",
+                        use_container_width=True,
+                    ):
+                        st.session_state["selected_stock"] = stock["ticker"]
+                        st.rerun()
+
+                price_column.metric(
+                    "Latest Close",
+                    f"${stock['price']:,.2f}",
+                )
+
+                score_column.metric(
+                    "BYRON Score",
+                    f"{stock['score']}/100",
+                )
+
+                st.caption(stock["reason"])
+
 st.subheader("⭐ My Watchlist")
 
 if watchlist:
@@ -847,6 +1232,9 @@ if watchlist:
             st.session_state["selected_stock"] = stock
 else:
     st.caption("No stocks saved yet.")
+
+
+    
 
 
 # ---------------------------------------------------------
