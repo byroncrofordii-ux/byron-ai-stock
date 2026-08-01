@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import yfinance as yf
+import streamlit.components.v1 as components
 import json
 import os
 import hashlib
@@ -15,9 +16,25 @@ if str(PROJECT_FOLDER) not in sys.path:
     sys.path.insert(0, str(PROJECT_FOLDER))
 
 from modules.scoring import calculate_stock_score
+from modules.forecasting import generate_probability_forecast
 
 USERS_FILE = "users.json"
 WATCHLIST_FOLDER = "watchlists"
+
+DEFAULT_MARKET_TICKERS = [
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMZN",
+    "GOOGL",
+    "META",
+    "TSLA",
+    "JPM",
+    "V",
+    "WMT",
+    "DIS",
+    "KO",
+]
 
 
 def normalize_username(username: str) -> str:
@@ -276,6 +293,65 @@ st.markdown(
             height: 3rem;
             font-weight: 700;
         }
+
+                .ticker-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            margin-bottom: 6px;
+            opacity: 0.85;
+        }
+
+        .ticker-wrapper {
+            width: 100%;
+            overflow: hidden;
+            white-space: nowrap;
+            border-top: 1px solid rgba(255, 255, 255, 0.12);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.04);
+            padding: 10px 0;
+            margin-bottom: 22px;
+        }
+
+        .ticker-scroll {
+            display: inline-block;
+            white-space: nowrap;
+            animation: ticker-move 60s linear infinite;
+        }
+
+        .ticker-item {
+            display: inline-block;
+            margin-right: 36px;
+            font-size: 0.95rem;
+        }
+
+        .ticker-up {
+            color: #39d98a;
+            margin-left: 4px;
+        }
+
+        .ticker-down {
+            color: #ff6b6b;
+            margin-left: 4px;
+        }
+
+        .ticker-flat {
+            color: #b8b8b8;
+            margin-left: 4px;
+        }
+
+        @keyframes ticker-move {
+            from {
+                transform: translateX(0);
+            }
+
+            to {
+                transform: translateX(-50%);
+            }
+        }
+
+        .ticker-wrapper:hover .ticker-scroll {
+            animation-play-state: paused;
+        }
     </style>
     """,
     unsafe_allow_html=True,
@@ -285,6 +361,197 @@ st.markdown(
 # ---------------------------------------------------------
 # DATA FUNCTIONS
 # ---------------------------------------------------------
+@st.cache_data(ttl=300)
+def get_marquee_data(tickers: tuple[str, ...]) -> list[dict]:
+    """
+    Get the latest price and daily percentage change
+    for the scrolling stock ticker.
+    """
+
+    marquee_items = []
+
+    for ticker in tickers:
+        try:
+            stock = yf.Ticker(ticker)
+
+            history = stock.history(
+                period="5d",
+                interval="1d",
+                auto_adjust=True,
+            )
+
+            if history.empty or len(history) < 2:
+                continue
+
+            current_price = float(history["Close"].iloc[-1])
+            previous_price = float(history["Close"].iloc[-2])
+
+            daily_change = (
+                ((current_price - previous_price) / previous_price) * 100
+                if previous_price != 0
+                else 0
+            )
+
+            marquee_items.append(
+                {
+                    "ticker": ticker,
+                    "price": current_price,
+                    "change": daily_change,
+                }
+            )
+
+        except Exception:
+            continue
+
+    return marquee_items
+
+def display_market_marquee(
+    tickers: list[str],
+    title: str,
+) -> None:
+    """
+    Display a scrolling stock ticker from right to left.
+    """
+
+    if not tickers:
+        return
+
+    marquee_data = get_marquee_data(tuple(tickers))
+
+    if not marquee_data:
+        return
+
+    marquee_parts = []
+
+    for item in marquee_data:
+        change = item["change"]
+
+        if change > 0:
+            movement = f"▲ {change:+.2f}%"
+            movement_class = "ticker-up"
+        elif change < 0:
+            movement = f"▼ {change:+.2f}%"
+            movement_class = "ticker-down"
+        else:
+            movement = "— 0.00%"
+            movement_class = "ticker-flat"
+
+        marquee_parts.append(
+            f"""
+            <span class="ticker-item">
+                <strong>{item['ticker']}</strong>
+                ${item['price']:,.2f}
+                <span class="{movement_class}">
+                    {movement}
+                </span>
+            </span>
+            """
+        )
+
+    ticker_html = "".join(marquee_parts)
+
+    full_html = f"""
+    <html>
+    <head>
+        <style>
+            body {{
+                margin: 0;
+                background: transparent;
+                font-family: Arial, sans-serif;
+                color: white;
+                overflow: hidden;
+            }}
+
+            .ticker-title {{
+                font-size: 14px;
+                font-weight: 700;
+                margin-bottom: 7px;
+            }}
+
+            .ticker-wrapper {{
+                width: 100%;
+                overflow: hidden;
+                white-space: nowrap;
+                border-top: 1px solid rgba(255, 255, 255, 0.15);
+                border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+                background: rgba(255, 255, 255, 0.05);
+                padding: 12px 0;
+            }}
+
+            .ticker-scroll {{
+                display: inline-block;
+                width: max-content;
+                white-space: nowrap;
+                animation: ticker-move 60s linear infinite;
+            }}
+
+@keyframes ticker-move {{
+    from {{
+        transform: translateX(0);
+    }}
+
+    to {{
+        transform: translateX(-50%);
+    }}
+}}
+
+            .ticker-item {{
+                display: inline-block;
+                margin-right: 42px;
+                font-size: 15px;
+            }}
+
+            .ticker-up {{
+                color: #39d98a;
+                margin-left: 5px;
+            }}
+
+            .ticker-down {{
+                color: #ff6b6b;
+                margin-left: 5px;
+            }}
+
+            .ticker-flat {{
+                color: #b8b8b8;
+                margin-left: 5px;
+            }}
+
+        @keyframes ticker-move {{
+            0% {{
+                transform: translateX(100%);
+            }}
+
+            100% {{
+                transform: translateX(-100%);
+            }}
+        }}
+        
+
+            .ticker-wrapper:hover .ticker-scroll {{
+                animation-play-state: paused;
+            }}
+        </style>
+    </head>
+
+    <body>
+        <div class="ticker-title">{title}</div>
+
+        <div class="ticker-wrapper">
+            <div class="ticker-scroll">
+                {ticker_html}
+                {ticker_html}
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    components.html(
+        full_html,
+        height=85,
+        scrolling=False,
+    )
+
 @st.cache_data(ttl=900)
 def download_stock_data(ticker: str, period: str) -> pd.DataFrame:
     """
@@ -558,6 +825,18 @@ if logout_column.button(
 
 watchlist = load_watchlist(current_user)
 
+if watchlist:
+    marquee_tickers = watchlist
+    marquee_title = "⭐ Your Watchlist"
+else:
+    marquee_tickers = DEFAULT_MARKET_TICKERS
+    marquee_title = "🌎 Nasdaq & Dow Market Watch"
+
+display_market_marquee(
+    marquee_tickers,
+    marquee_title,
+)
+
 st.subheader("⭐ My Watchlist")
 
 if watchlist:
@@ -627,6 +906,12 @@ if analyze_button:
 
             results = create_analysis(stock_data)
 
+            forecast = generate_probability_forecast(
+                stock_data,
+                horizon_days=63,
+                simulations=5000,
+)
+
         except Exception as error:
             st.error(
                 "BYRON could not retrieve this stock right now. "
@@ -688,7 +973,98 @@ if analyze_button:
     st.markdown("### Why is BYRON saying this?")
     st.info(results["reason"])
 
+    st.markdown("### 📊 90-Day Probability Outlook")
+
+    st.info(
+    "🌦️ Just like the weather, nobody can predict the future with certainty. "
+    "B.Y.R.O.N. estimates the most likely outcomes based on historical data "
+    "and probability—not guarantees."
+)
+
+    st.caption(
+        "B.Y.R.O.N. simulated 5,000 possible outcomes using the "
+        "stock's recent returns and volatility."
+    )
+
+    bull_column, base_column, bear_column = st.columns(3)
+
+    bull_column.metric(
+    "☀️ Bull Case",
+    f"{forecast['bull_return']:+.1f}%",
+    f"{forecast['bull_probability']:.1f}% probability",
+    help=(
+        "☀️ Think of this as a sunny day. "
+        "Everything goes right, and this is the best-case outcome "
+        "B.Y.R.O.N. sees over the next 90 days."
+    ),
+)
+
+    base_column.metric(
+        "🌤️ Base Case",
+        f"{forecast['base_return']:+.1f}%",
+        f"{forecast['base_probability']:.1f}% probability",
+        help=(
+            "🌤️ Think of this as partly cloudy. "
+            "Nothing amazing, nothing terrible. This is the outcome "
+            "B.Y.R.O.N. believes is most likely."
+        ),
+    )
+
+    bear_column.metric(
+        "🌧️ Bear Case",
+        f"{forecast['bear_return']:+.1f}%",
+        f"{forecast['bear_probability']:.1f}% probability",
+        help=(
+            "🌧️ Think of this as a rainy day. "
+            "If things don't go as planned, this is the downside "
+            "scenario B.Y.R.O.N. is preparing for."
+    ),
+)
+
+
+    st.progress(
+        int(
+            max(
+                0,
+                min(
+                    100,
+                    forecast["probability_positive"],
+                ),
+            )
+        ),
+        text=(
+            "Estimated probability of finishing higher: "
+            f"{forecast['probability_positive']:.1f}%"
+        ),
+    )
+
+    with st.expander("How was this forecast calculated?"):
+        st.write(
+            "B.Y.R.O.N. reviewed the stock's recent daily returns "
+            "and volatility, then simulated 5,000 possible price "
+            "paths covering approximately 90 calendar days."
+        )
+
+        st.write(
+            "**Bull case:** simulated return above 10%."
+        )
+
+        st.write(
+            "**Base case:** simulated return between -5% and +10%."
+        )
+
+        st.write(
+            "**Bear case:** simulated return below -5%."
+        )
+
+        st.warning(
+            "This is an educational probability estimate based on "
+            "historical behavior. It is not a guarantee of future "
+            "performance or financial advice."
+        )
+
     st.markdown("### Price History")
+
 
     chart_data = results["data"][["Close"]].copy()
     chart_data.rename(columns={"Close": f"{ticker} Price"}, inplace=True)
