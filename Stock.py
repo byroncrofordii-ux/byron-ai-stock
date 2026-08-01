@@ -474,9 +474,6 @@ def get_hot_stocks(
     return hot_stocks[:limit]
 
 @st.cache_data(ttl=300)
-
-
-@st.cache_data(ttl=300)
 def get_hidden_gems(
     tickers: tuple[str, ...],
     limit: int = 5,
@@ -773,72 +770,9 @@ def create_analysis(data: pd.DataFrame) -> dict:
     rsi = float(latest["RSI"])
 
     daily_volatility = df["Daily_Return"].tail(30).std()
-    annualized_volatility = float(daily_volatility * np.sqrt(252) * 100)
-
-def scan_green_signals(
-    tickers: tuple[str, ...],
-) -> list[dict]:
-    """
-    Scan stocks and return those with a green BYRON signal.
-    """
-
-    green_stocks = []
-
-    for ticker in tickers:
-        try:
-            stock = yf.Ticker(ticker)
-
-            history = stock.history(
-                period="6mo",
-                interval="1d",
-                auto_adjust=True,
-            )
-
-            if history.empty or len(history) < 55:
-                continue
-
-            data = history.copy()
-            data["Average_20"] = data["Close"].rolling(20).mean()
-            data["Average_50"] = data["Close"].rolling(50).mean()
-            data["RSI"] = calculate_rsi(data["Close"])
-
-            latest = data.iloc[-1]
-
-            current_price = float(latest["Close"])
-            average_20 = float(latest["Average_20"])
-            average_50 = float(latest["Average_50"])
-            rsi = float(latest["RSI"])
-            recent_return = data["Close"].pct_change(5).iloc[-1]
-
-            score_results = calculate_stock_score(
-                current_price=current_price,
-                average_20=average_20,
-                average_50=average_50,
-                rsi=rsi,
-                recent_return=recent_return,
-            )
-
-            if score_results["score"] >= 68:
-                green_stocks.append(
-                    {
-                        "ticker": ticker,
-                        "price": current_price,
-                        "score": score_results["score"],
-                        "signal": score_results["signal"],
-                        "reason": score_results["reason"],
-                    }
-                )
-
-        except Exception:
-            continue
-
-    green_stocks.sort(
-        key=lambda item: item["score"],
-        reverse=True,
+    annualized_volatility = float(
+        daily_volatility * np.sqrt(252) * 100
     )
-
-    return green_stocks
-
 
     # -----------------------------------------------------
     # SIGNAL SCORE
@@ -874,7 +808,6 @@ def scan_green_signals(
         risk = "High"
         risk_emoji = "🔴"
 
-
     return {
         "data": df,
         "current_price": current_price,
@@ -893,6 +826,72 @@ def scan_green_signals(
         "confidence": confidence,
         "reason": plain_reason,
     }
+
+def scan_green_signals(
+    tickers: tuple[str, ...],
+) -> list[dict]:
+    """
+    Scan stocks and return those with a green BYRON signal.
+    """
+
+    green_stocks = []
+
+    for ticker in tickers:
+        try:
+            stock = yf.Ticker(ticker)
+
+            history = stock.history(
+                period="6mo",
+                interval="1d",
+                auto_adjust=True,
+            )
+
+            if history.empty or len(history) < 55:
+                continue
+
+            data = history.copy()
+            data["Average_20"] = data["Close"].rolling(20).mean()
+            data["Average_50"] = data["Close"].rolling(50).mean()
+            data["RSI"] = calculate_rsi(data["Close"])
+
+            latest = data.iloc[-1]
+
+            current_price = float(latest["Close"])
+            average_20 = float(latest["Average_20"])
+            average_50 = float(latest["Average_50"])
+            rsi = float(latest["RSI"])
+            recent_return = float(
+                data["Close"].pct_change(5).iloc[-1]
+            )
+
+            score_results = calculate_stock_score(
+                current_price=current_price,
+                average_20=average_20,
+                average_50=average_50,
+                rsi=rsi,
+                recent_return=recent_return,
+            )
+
+            if score_results["score"] >= 68:
+                green_stocks.append(
+                    {
+                        "ticker": ticker,
+                        "price": current_price,
+                        "score": score_results["score"],
+                        "signal": score_results["signal"],
+                        "reason": score_results["reason"],
+                    }
+                )
+
+        except Exception:
+            continue
+
+    green_stocks.sort(
+        key=lambda item: item["score"],
+        reverse=True,
+    )
+
+    return green_stocks
 
 
 # ---------------------------------------------------------
@@ -1317,8 +1316,7 @@ if analyze_button:
     price_column, change_column = st.columns(2)
 
     
-    st.write(results)
-    st.write(type(results))
+
 
     price_column.metric(
             label="Current Price",
