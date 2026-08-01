@@ -1318,7 +1318,7 @@ if analyze_button:
 
     price_column.metric(
         label="Current Price",
-        value=f"${results['current_price']:,.2f}",
+        value=f"${float(results['current_price']):,.2f}",
     )
 
     change_column.metric(
