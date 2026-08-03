@@ -17,6 +17,8 @@ if str(PROJECT_FOLDER) not in sys.path:
 
 from modules.scoring import calculate_stock_score
 from modules.forecasting import generate_probability_forecast
+from byron_assistant import show_byron
+from market_status import get_market_status, display_market_status
 
 USERS_FILE = "users.json"
 WATCHLIST_FOLDER = "watchlists"
@@ -916,18 +918,34 @@ def log_out_user() -> None:
     st.session_state.pop("selected_stock", None)
 
 
+# ---------------------------------------------------------
+# LOGIN PAGE
+# ------
 if not st.session_state["logged_in"]:
-    st.title("📈 B.Y.R.O.N.")
+    login_logo = PROJECT_FOLDER / "assets" / "byron_logo.png"
 
-    st.markdown(
-        """
-        <div class="app-subtitle">
-            Behavioral Yield & Risk Optimization Network<br>
-            <strong>Welcome to the party.</strong>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    logo_column, title_column = st.columns([1, 6])
+
+    with logo_column:
+        if login_logo.exists():
+            st.image(
+                str(login_logo),
+                width=85,
+            )
+
+    with title_column:
+        st.markdown(
+            """<div style="margin-top:-10px;">
+<h1 style="margin-bottom:0;">B.Y.R.O.N.</h1>
+<div style="color:#a7a7a7;font-size:1rem;">
+Behavioral Yield & Risk Optimization Network
+</div>
+<div style="font-weight:700;margin-top:5px;">
+Welcome to the party.
+</div>
+</div>""",
+            unsafe_allow_html=True,
+        )
 
     login_tab, create_tab = st.tabs(
         ["Log In", "Create Profile"]
@@ -955,7 +973,9 @@ if not st.session_state["logged_in"]:
                 log_in_user(login_username)
                 st.rerun()
             else:
-                st.error("The username or PIN is incorrect.")
+                st.error(
+                    "The username or PIN is incorrect."
+                )
 
     with create_tab:
         new_username = st.text_input(
@@ -998,38 +1018,42 @@ if not st.session_state["logged_in"]:
 
     st.stop()
 
-
 # ---------------------------------------------------------
 # APP HEADER
 # ---------------------------------------------------------
-st.title("📈 B.Y.R.O.N.")
-
-st.markdown(
-    """
-    <div class="app-subtitle">
-        Behavioral Yield & Risk Optimization Network<br>
-        <strong>See Tomorrow's Trends Today.</strong>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
 ##################LOGIN/LOGOUT BUTTON#################
 
 current_user = st.session_state["username"]
 
-user_column, logout_column = st.columns([3, 1])
+market_status = get_market_status()
 
-user_column.caption(
-    f"Signed in as @{current_user}"
+show_byron(
+    market_status["assistant_message"],
+    mood=market_status["mood"],
 )
 
-if logout_column.button(
-    "Log Out",
-    use_container_width=True,
-):
-    log_out_user()
-    st.rerun()
+logo_column, title_column, logout_column = st.columns([1, 6, 2])
+
+BYRON_LOGO = PROJECT_FOLDER / "assets" / "byron_logo.png"
+
+with logo_column:
+    st.image(
+        str(BYRON_LOGO),
+        width=85,
+    )
+
+
+
+with logout_column:
+    if st.button(
+        "Log Out",
+        use_container_width=True,
+    ):
+        log_out_user()
+        st.rerun()
+
+display_market_status(market_status)
 
 ##################WATCHLIST############################
 
